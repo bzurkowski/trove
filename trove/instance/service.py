@@ -193,18 +193,37 @@ class InstanceController(wsgi.Controller):
         return wsgi.Result(None, 202)
 
     def index(self, req, tenant_id):
-        """Return all instances."""
         LOG.info("Listing database instances for tenant '%s'", tenant_id)
         LOG.debug("req : '%s'\n\n", req)
         context = req.environ[wsgi.CONTEXT_KEY]
         policy.authorize_on_tenant(context, 'instance:index')
+        instances = self._get_instances(req, detail=False)
+        return wsgi.Result(instances, 200)
+
+    def detail(self, req, tenant_id):
+        LOG.info("Listing database instances with details for tenant '%s'",
+                 tenant_id)
+        LOG.debug("req : '%s'\n\n", req)
+        context = req.environ[wsgi.CONTEXT_KEY]
+        policy.authorize_on_tenant(context, 'instance:detail')
+        instances = self._get_instances(req, detail=True)
+        return wsgi.Result(instances, 200)
+
+    def _get_instances(self, req, detail):
+        context = req.environ[wsgi.CONTEXT_KEY]
         clustered_q = req.GET.get('include_clustered', '').lower()
         include_clustered = clustered_q == 'true'
-        servers, marker = models.Instances.load(context, include_clustered)
-        view = views.InstancesView(servers, req=req)
+        instances, marker = models.Instances.load(context, include_clustered)
+        if detail:
+            inst_view = views.InstanceDetailView
+        else:
+            inst_view = views.InstanceView
+        view = views.InstancesView(instances,
+                                   instance_view=inst_view,
+                                   req=req)
         paged = pagination.SimplePaginatedDataView(req.url, 'instances', view,
                                                    marker)
-        return wsgi.Result(paged.data(), 200)
+        return paged.data()
 
     def backups(self, req, tenant_id, id):
         """Return all backups for the specified instance."""
